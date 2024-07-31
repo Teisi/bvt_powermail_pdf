@@ -38,7 +38,7 @@ EXT: bvt_powermail_pdf
       en
 
 :Description:
-	bvt_powermail_pdf is a fork of the extension `bw_powermail_mpdf <https://typo3.org/extensions/repository/view/bw_powermail_mpdf/>`_ which is a modification of the extension `powermailpdf <https://typo3.org/extensions/repository/view/powermailpdf/>`_ and can be used for automatic pdf generation with `mPDF <http://www.mpdf1.com/mpdf/index.php>`_ after a powermail form is submitted.
+      bvt_powermail_pdf is a fork of the extension `bw_powermail_mpdf <https://typo3.org/extensions/repository/view/bw_powermail_mpdf/>`_ which is a modification of the extension `powermailpdf <https://typo3.org/extensions/repository/view/powermailpdf/>`_ and can be used for automatic pdf generation with `mPDF <http://www.mpdf1.com/mpdf/index.php>`_ after a powermail form is submitted.
 
 
 Introduction

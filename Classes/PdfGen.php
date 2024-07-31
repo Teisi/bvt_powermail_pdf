@@ -1,35 +1,31 @@
 <?php
 namespace Bvt\BvtPowermailPdf;
 
-// use TYPO3\CMS\Extbase\Utility\DebuggerUtility;
+use Psr\Http\Message\ResponseInterface;
+use TYPO3\CMS\Extbase\Utility\DebuggerUtility;
 use TYPO3\CMS\Core\Error\Exception;
+use TYPO3\CMS\Core\Log\Logger;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
+use TYPO3\CMS\Extbase\Annotation as ExtbaseAnnotation;
+use TYPO3\CMS\Extbase\Configuration\ConfigurationManager;
+use TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface;
+use TYPO3\CMS\Extbase\Utility\LocalizationUtility;
+use In2code\Powermail\Domain\Model\Mail;
 
 /**
  *  PdfGen class handles pdf generation and adds filename and link to powermail mail
  */
 class PdfGen extends \In2code\Powermail\Controller\FormController {
 
-
-    /** @var \TYPO3\CMS\Core\Log\Logger|null $logger typo3 logger */
-    protected $logger = null;
-
-    /**
-     * @var array
-     */
-    protected $typoscriptSettings = [];
-
-    /**
-     * @var array
-     */
-    protected $powermailSettings = [];
+    protected ?Logger $logger = null;
+    protected array $typoscriptSettings = [];
+    protected array $powermailSettings = [];
 
     public function __construct()
     {
-        $objectManager = \TYPO3\CMS\Core\Utility\GeneralUtility::makeInstance('TYPO3\\CMS\Extbase\\Object\\ObjectManager');
-        $configurationManager = $objectManager->get('TYPO3\\CMS\\Extbase\\Configuration\\ConfigurationManager');
+        $configurationManager = GeneralUtility::makeInstance(ConfigurationManager::class);
         $extbaseFrameworkConfiguration = $configurationManager->getConfiguration(
-            \TYPO3\CMS\Extbase\Configuration\ConfigurationManagerInterface::CONFIGURATION_TYPE_FULL_TYPOSCRIPT
+            ConfigurationManagerInterface::CONFIGURATION_TYPE_FULL_TYPOSCRIPT
         );
 
         $this->typoscriptSettings = $extbaseFrameworkConfiguration['plugin.']['tx_bvtpowermailpdf.']['settings.'];
@@ -38,10 +34,8 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
 
     /**
      * Returns typo3 logger
-     *
-     * @return \TYPO3\CMS\Core\Log\Logger
      */
-    protected function getLogger()
+    protected function getLogger(): ?Logger
     {
         if (!$this->logger) {
             $this->logger = GeneralUtility::makeInstance('TYPO3\CMS\Core\Log\LogManager')->getLogger(__CLASS__);
@@ -51,10 +45,8 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
 
     /**
      * Returns increment id
-     *
-     * @return string
      */
-    protected function getIncrementId($uid)
+    protected function getIncrementId(int $uid): string
     {
         $calc = $this->typoscriptSettings['incremendId.']['calc'];
 
@@ -64,22 +56,15 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
     /**
      * Generate PDF from HTML Template
      *
-     * @param In2code\Powermail\Domain\Model\Mail $mail
-     *
      * @throws \FileNotFoundException
-     *
-     * @return string
      */
-    protected function generatePdf(\In2code\Powermail\Domain\Model\Mail $mail)
+    protected function generatePdf(Mail $mail): string
     {
-        // Use mpdf
-        require 'mpdf/mpdf.php';
-
         // Map fields
         $fieldMap = $this->typoscriptSettings['fieldMap.'];
 
         $answers = $mail->getAnswers();
-        $answerData = array();
+        $answerData = [];
 
         foreach ($fieldMap as $key => $value) {
             foreach($answers as $answer){
@@ -97,7 +82,7 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
         }
 
         // load html file here
-        $htmlOriginal = \TYPO3\CMS\Core\Utility\GeneralUtility::getFileAbsFileName($this->typoscriptSettings['sourceFile']);
+        $htmlOriginal = GeneralUtility::getFileAbsFileName($this->typoscriptSettings['sourceFile']);
 
         if (!empty($htmlOriginal)) {
             $info = pathinfo($htmlOriginal);
@@ -105,30 +90,49 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
 
             // Name for the generated pdf
             $pdfFilename = $this->powermailSettings['setup.']['misc.']['file.']['folder'] . $fileName . '_' . md5(time()) . '.pdf';
-            $mpdf = new \mPDF(
-                $this->typoscriptSettings['mpdf.']['encoding'],
-                $this->typoscriptSettings['mpdf.']['pageFormat'],
-                $this->typoscriptSettings['mpdf.']['defaultFontSize'],
-                $this->typoscriptSettings['mpdf.']['defaultFont'],
-                $this->typoscriptSettings['mpdf.']['marginLeft'],
-                $this->typoscriptSettings['mpdf.']['marginRight'],
-                $this->typoscriptSettings['mpdf.']['marginTop'],
-                $this->typoscriptSettings['mpdf.']['marginBottom'],
-                $this->typoscriptSettings['mpdf.']['marginHeader'],
-                $this->typoscriptSettings['mpdf.']['marginFooter'],
-                $this->typoscriptSettings['mpdf.']['orientation']
-            );
+
+            // Use mpdf
+
+            $defaultConfig = (new \Mpdf\Config\ConfigVariables())->getDefaults();
+            $fontDirs = $defaultConfig['fontDir'];
+
+            $defaultFontConfig = (new \Mpdf\Config\FontVariables())->getDefaults();
+            $fontData = $defaultFontConfig['fontdata'];
+
+            $mpdf = new \Mpdf\Mpdf([
+                // $this->typoscriptSettings['mpdf.']['encoding'],
+                // $this->typoscriptSettings['mpdf.']['defaultFontSize'],
+                // $this->typoscriptSettings['mpdf.']['defaultFont'], alexbrush
+                // $this->typoscriptSettings['mpdf.']['marginLeft'],
+                // $this->typoscriptSettings['mpdf.']['marginRight'],
+                // $this->typoscriptSettings['mpdf.']['marginTop'],
+                // $this->typoscriptSettings['mpdf.']['marginBottom'],
+                // $this->typoscriptSettings['mpdf.']['marginHeader'],
+                // $this->typoscriptSettings['mpdf.']['marginFooter'],
+                'displayDefaultOrientation' => $this->typoscriptSettings['mpdf.']['orientation'],
+                'fontDir' => array_merge($fontDirs, [
+                    $_SERVER['DOCUMENT_ROOT'] . '/typo3conf/ext/bvt_powermail_pdf/Resources/Public/Fonts/alex-brush/'
+                ]),
+                'fontdata' => $fontData + [ // lowercase letters only in font key
+                    'alexbrush' => [
+                        'R' => 'alex-brush-v21-latin-regular.ttf',
+                    ]
+                ],
+                'default_font' => 'alexbrush'
+            ]);
 
             $this->getLogger()->error($this->typoscriptSettings['mpdf.']['marginLeft']);
 
             // Fluid standalone view
-            $htmlView = $this->objectManager->get('TYPO3\\CMS\\Fluid\\View\\StandaloneView');
+            $htmlView = GeneralUtility::makeInstance('TYPO3\\CMS\\Fluid\\View\\StandaloneView');
             $htmlView->setFormat('html');
             $htmlView->setTemplatePathAndFileName($htmlOriginal);
 
             $htmlView->assignMultiple($answerData);
 
             $html = $htmlView->render();
+
+            // $mpdf->showImageErrors = true;
 
             $mpdf->writeHTML($html);
             $mpdf->Output(GeneralUtility::getFileAbsFileName($pdfFilename), 'F');
@@ -159,14 +163,29 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
     }
 
     /**
-     *
-     * @param \In2code\Powermail\Domain\Model\Mail $mail
-     * @param \string $hash
+     * @param Mail $mail
+     * @param string $hash
+     * @ExtbaseAnnotation\Validate("In2code\Powermail\Domain\Validator\UploadValidator", param="mail")
+     * @ExtbaseAnnotation\Validate("In2code\Powermail\Domain\Validator\InputValidator", param="mail")
+     * @ExtbaseAnnotation\Validate("In2code\Powermail\Domain\Validator\PasswordValidator", param="mail")
+     * @ExtbaseAnnotation\Validate("In2code\Powermail\Domain\Validator\CaptchaValidator", param="mail")
+     * @ExtbaseAnnotation\Validate("In2code\Powermail\Domain\Validator\SpamShieldValidator", param="mail")
+     * @ExtbaseAnnotation\Validate("In2code\Powermail\Domain\Validator\UniqueValidator", param="mail")
+     * @ExtbaseAnnotation\Validate("In2code\Powermail\Domain\Validator\ForeignValidator", param="mail")
+     * @ExtbaseAnnotation\Validate("In2code\Powermail\Domain\Validator\CustomValidator", param="mail")
+     * @return void
+     * @throws IllegalObjectTypeException
+     * @throws InvalidConfigurationTypeException
+     * @throws InvalidExtensionNameException
+     * @throws InvalidSlotException
+     * @throws InvalidSlotReturnException
+     * @throws UnknownObjectException
+     * @throws InvalidControllerNameException
+     * @throws \Exception
+     * @noinspection PhpUnused
      */
-    public function createAction(\In2code\Powermail\Domain\Model\Mail $mail, $hash = NULL)
+    public function createCustomAction(Mail $mail, \In2code\Powermail\Controller\FormController $hash = NULL): void
     {
-        $this->getLogger()->error(get_class($hash));
-
         $filePath = $this->typoscriptSettings['sourceFile'];
         $powermailFilePath = $this->powermailSettings['setup.']['misc.']['file.']['folder'] . basename($filePath);
 
@@ -187,11 +206,11 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
                 }
             }
 
-            $formRepository = $this->objectManager->get('In2code\Powermail\Domain\Repository\FieldRepository');
+            $formRepository = GeneralUtility::makeInstance(\In2code\Powermail\Domain\Repository\FieldRepository::class);
 
             // Display download link
             if ($this->typoscriptSettings['showDownloadLink']) {
-                $label = \TYPO3\CMS\Extbase\Utility\LocalizationUtility::translate('download', 'bvt_powermail_pdf');
+                $label = LocalizationUtility::translate('download', 'bvt_powermail_pdf');
 
                 $url = $GLOBALS['TSFE']->tmpl->setup['config.']['baseURL'] . '/' . $powermailFilePath;
                 // if no baseURL is set (e. g. cause of use siteconfig)
@@ -202,14 +221,14 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
                 }
 
                 /* @var $answer In2code\Powermail\Domain\Model\Answer */
-                $answer = $this->objectManager->get('In2code\Powermail\Domain\Model\Answer');
+                $answer = GeneralUtility::makeInstance(\In2code\Powermail\Domain\Model\Answer::class);
 
                 $field = $formRepository->findByMarkerAndForm($this->typoscriptSettings['marker.']['pdf_url'], 0);
 
                 if (!$field) {
                     /* @var $field In2code\Powermail\Domain\Model\Field */
-                    $field = $this->objectManager->get('In2code\Powermail\Domain\Model\Field');
-                    $field->setTitle(\TYPO3\CMS\Extbase\Utility\LocalizationUtility::translate('downloadUrl', 'bvt_powermail_pdf'));
+                    $field = GeneralUtility::makeInstance(\In2code\Powermail\Domain\Model\Field::class);
+                    $field->setTitle(LocalizationUtility::translate('downloadUrl', 'bvt_powermail_pdf'));
                     $field->setType('input');
                     $field->setPid(0); // $mail->getPid()
                     $field->setMarker($this->typoscriptSettings['marker.']['pdf_url']);
@@ -224,14 +243,14 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
                 $link = $this->render($url, $label);
 
                 /* @var $answer In2code\Powermail\Domain\Model\Answer */
-                $answer = $this->objectManager->get('In2code\Powermail\Domain\Model\Answer');
+                $answer = GeneralUtility::makeInstance(\In2code\Powermail\Domain\Model\Answer::class);
 
                 $field = $formRepository->findByMarkerAndForm($this->typoscriptSettings['marker.']['pdf_link'], 0);
 
                 if (!$field) {
                     /* @var $field In2code\Powermail\Domain\Model\Field */
-                    $field = $this->objectManager->get('In2code\Powermail\Domain\Model\Field');
-                    $field->setTitle(\TYPO3\CMS\Extbase\Utility\LocalizationUtility::translate('downloadLink', 'bvt_powermail_pdf'));
+                    $field = GeneralUtility::makeInstance('In2code\Powermail\Domain\Model\Field');
+                    $field->setTitle(LocalizationUtility::translate('downloadLink', 'bvt_powermail_pdf'));
                     $field->setType('downloadLink');
                     $field->setPid(0);
                     $field->setMarker($this->typoscriptSettings['marker.']['pdf_link']);
@@ -246,14 +265,14 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
             // Append download link to mail
             if ($this->typoscriptSettings['email.']['attachFile']) {
                 /* @var $answer In2code\Powermail\Domain\Model\Answer */
-                $answer = $this->objectManager->get('In2code\Powermail\Domain\Model\Answer');
+                $answer = GeneralUtility::makeInstance('In2code\Powermail\Domain\Model\Answer');
 
-                $field = $formRepository->findByMarkerAndForm('bvt_powermail_pdf_attachment',0);
+                $field = $formRepository->findByMarkerAndForm('bvt_powermail_pdf_attachment', 0);
 
-                 if (!$field) {
+                if (!$field) {
                     /* @var $field In2code\Powermail\Domain\Model\Field */
-                    $field = $this->objectManager->get('In2code\Powermail\Domain\Model\Field');
-                    $field->setTitle(\TYPO3\CMS\Extbase\Utility\LocalizationUtility::translate('file', 'bvt_powermail_pdf'));
+                    $field = GeneralUtility::makeInstance('In2code\Powermail\Domain\Model\Field');
+                    $field->setTitle(LocalizationUtility::translate('file', 'bvt_powermail_pdf'));
                     $field->setType('file');
                     $field->setMarker('bvt_powermail_pdf_attachment');
                     $field->setPid(0);
@@ -268,21 +287,23 @@ class PdfGen extends \In2code\Powermail\Controller\FormController {
                 $incremendId = $this->getIncrementId($mail->getUid());
 
                 /* @var $answer In2code\Powermail\Domain\Model\Answer */
-                $answer = $this->objectManager->get('In2code\Powermail\Domain\Model\Answer');
+                $answer = GeneralUtility::makeInstance('In2code\Powermail\Domain\Model\Answer');
 
                 $field = $formRepository->findByMarkerAndForm('increment_id', 0);
 
                 if (!$field) {
                     /* @var $field In2code\Powermail\Domain\Model\Field */
-                    $field = $this->objectManager->get('In2code\Powermail\Domain\Model\Field');
-                    $field->setTitle(\TYPO3\CMS\Extbase\Utility\LocalizationUtility::translate('Request Id', 'bvt_powermail_pdf'));
+                    $field = GeneralUtility::makeInstance('In2code\Powermail\Domain\Model\Field');
+                    $title = LocalizationUtility::translate('Request_Id', 'bvt_powermail_pdf');
+                    if(empty($title)) { $title = 'Request Id'; }
+                    $field->setTitle($title);
                     $field->setType('file');
                     $field->setMarker('increment_id');
                     $field->setPid(0);
                 }
 
                 $answer->setField($field);
-                $answer->setValue($incremendId);
+                $answer->setValue('"'.$incremendId.'"');
                 $mail->addAnswer($answer);
             }
         }
